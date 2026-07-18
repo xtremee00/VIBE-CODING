@@ -3,6 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import fs from "fs";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -33,7 +35,195 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
+  const USERS_FILE = path.join(process.cwd(), "registered_users.json");
+  const EMAILS_FILE = path.join(process.cwd(), "sent_emails.json");
+
+  // Helper to read JSON file safely
+  async function readJsonFile(filePath: string): Promise<any[]> {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return [];
+      }
+      const content = await fs.promises.readFile(filePath, "utf-8");
+      return JSON.parse(content || "[]");
+    } catch (err) {
+      console.error(`Error reading ${filePath}:`, err);
+      return [];
+    }
+  }
+
+  // Helper to write JSON file safely
+  async function writeJsonFile(filePath: string, data: any[]): Promise<void> {
+    try {
+      await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err) {
+      console.error(`Error writing ${filePath}:`, err);
+    }
+  }
+
   // API endpoints
+  app.post("/api/admin/register", async (req, res) => {
+    try {
+      const { id, type, businessName, name, email, phone, role, date, shopCode } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      const users = await readJsonFile(USERS_FILE);
+      
+      // Check if a user with same name/email/businessName already exists in server registry
+      const exists = users.some(u => 
+        u.name.toLowerCase() === name.toLowerCase() && 
+        u.businessName?.toLowerCase() === businessName?.toLowerCase() &&
+        (email ? u.email?.toLowerCase() === email.toLowerCase() : true)
+      );
+
+      if (!exists) {
+        const newUser = {
+          id: id || `u-${Date.now()}`,
+          type: type || "staff_joined",
+          businessName: businessName || "ShopLedger Business",
+          name,
+          email: email || "",
+          phone: phone || "",
+          role: role || "salesperson",
+          date: date || new Date().toISOString(),
+          shopCode: shopCode || ""
+        };
+        users.push(newUser);
+        await writeJsonFile(USERS_FILE, users);
+        return res.json({ success: true, message: "User registered successfully on server.", user: newUser });
+      }
+
+      return res.json({ success: true, message: "User already exists in server registry." });
+    } catch (err: any) {
+      console.error("Error in /api/admin/register:", err);
+      res.status(500).json({ error: err.message || "Failed to register user on server" });
+    }
+  });
+
+  app.get("/api/admin/users", async (req, res) => {
+    try {
+      const users = await readJsonFile(USERS_FILE);
+      res.json({ success: true, users });
+    } catch (err: any) {
+      console.error("Error in /api/admin/users:", err);
+      res.status(500).json({ error: err.message || "Failed to retrieve registered users" });
+    }
+  });
+
+  app.get("/api/admin/emails", async (req, res) => {
+    try {
+      const emails = await readJsonFile(EMAILS_FILE);
+      res.json({ success: true, emails });
+    } catch (err: any) {
+      console.error("Error in /api/admin/emails:", err);
+      res.status(500).json({ error: err.message || "Failed to retrieve sent emails" });
+    }
+  });
+
+  app.post("/api/admin/send-email", async (req, res) => {
+    try {
+      const { to, subject, body, isHtml } = req.body;
+      if (!to || !to.length || !subject || !body) {
+        return res.status(400).json({ error: "Missing required fields (to, subject, body)" });
+      }
+
+      const smtpHost = process.env.SMTP_HOST;
+      const smtpPort = process.env.SMTP_PORT;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+      const smtpFrom = process.env.SMTP_FROM || smtpUser || "noreply@shopledger.com";
+
+      const emails = await readJsonFile(EMAILS_FILE);
+      const isSmtpConfigured = !!(smtpHost && smtpPort && smtpUser && smtpPass);
+
+      const toList = Array.isArray(to) ? to : [to];
+      const sentDetails: any[] = [];
+      let anyRealSuccess = false;
+      let errorMsg = "";
+
+      if (isSmtpConfigured) {
+        try {
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: parseInt(smtpPort!),
+            secure: process.env.SMTP_SECURE === "true",
+            auth: {
+              user: smtpUser,
+              pass: smtpPass
+            }
+          });
+
+          // Send mail
+          const info = await transporter.sendMail({
+            from: smtpFrom,
+            to: toList.join(", "),
+            subject: subject,
+            [isHtml ? "html" : "text"]: body
+          });
+
+          anyRealSuccess = true;
+          sentDetails.push({
+            id: `e-${Date.now()}`,
+            to: toList,
+            subject,
+            body,
+            date: new Date().toISOString(),
+            status: "sent",
+            info: info.messageId,
+            isHtml: !!isHtml
+          });
+        } catch (mailErr: any) {
+          console.error("Nodemailer failed to send, falling back to log:", mailErr);
+          errorMsg = mailErr.message || "SMTP Connection Failed";
+          
+          sentDetails.push({
+            id: `e-${Date.now()}`,
+            to: toList,
+            subject,
+            body,
+            date: new Date().toISOString(),
+            status: "failed_smtp_logged",
+            error: errorMsg,
+            isHtml: !!isHtml
+          });
+        }
+      } else {
+        // Log locally
+        sentDetails.push({
+          id: `e-${Date.now()}`,
+          to: toList,
+          subject,
+          body,
+          date: new Date().toISOString(),
+          status: "logged_only",
+          info: "Logged to server (SMTP credentials not configured in environment)",
+          isHtml: !!isHtml
+        });
+      }
+
+      // Append to emails list
+      emails.push(...sentDetails);
+      await writeJsonFile(EMAILS_FILE, emails);
+
+      return res.json({
+        success: true,
+        sent: anyRealSuccess,
+        logged: !anyRealSuccess,
+        error: errorMsg || undefined,
+        message: anyRealSuccess 
+          ? "Emails sent successfully via SMTP!" 
+          : "SMTP credentials not configured (or connection failed). The email has been recorded in the delivery queue/log on the server.",
+        details: sentDetails
+      });
+
+    } catch (err: any) {
+      console.error("Error in /api/admin/send-email:", err);
+      res.status(500).json({ error: err.message || "Failed to process send email" });
+    }
+  });
+
   app.post("/api/gemini/insights", async (req, res) => {
     try {
       const { sales, expenses, products, businessName } = req.body;

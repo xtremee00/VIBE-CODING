@@ -7,6 +7,7 @@ export interface StaffMember {
   email?: string;
   phone?: string;
   isActive: boolean;
+  pin?: string; // personal 4-digit PIN for authentication
 }
 
 export interface Product {
@@ -101,6 +102,7 @@ export interface BusinessSettings {
   };
   pinLockEnabled: boolean;
   pinCode?: string;
+  shopCode?: string; // unique 6-character code to register new staff
 }
 
 export interface ShopState {

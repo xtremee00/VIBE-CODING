@@ -72,9 +72,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
 ];
 
 export const DEFAULT_STAFF: StaffMember[] = [
-  { id: "s1", name: "Alhaji Ibrahim", role: "owner", email: "ibrahim@shopledger.com", phone: "+2348031234567", isActive: true },
-  { id: "s2", name: "Chinedu (Manager)", role: "manager", email: "chinedu@shopledger.com", phone: "+2348057654321", isActive: true },
-  { id: "s3", name: "Aminat (Sales)", role: "salesperson", email: "aminat@shopledger.com", phone: "+2348123456789", isActive: true }
+  { id: "s1", name: "Alhaji Ibrahim", role: "owner", email: "ibrahim@shopledger.com", phone: "+2348031234567", isActive: true, pin: "1111" },
+  { id: "s2", name: "Chinedu (Manager)", role: "manager", email: "chinedu@shopledger.com", phone: "+2348057654321", isActive: true, pin: "2222" },
+  { id: "s3", name: "Aminat (Sales)", role: "salesperson", email: "aminat@shopledger.com", phone: "+2348123456789", isActive: true, pin: "3333" }
 ];
 
 // Helper to generate dates relative to current date (e.g. today, yesterday, 3 days ago)
@@ -322,6 +322,7 @@ export const INITIAL_STATE = (): ShopState => ({
       autoBackup: true,
       lastBackupDate: new Date().toLocaleDateString()
     },
-    pinLockEnabled: false
+    pinLockEnabled: false,
+    shopCode: "SL-8921"
   }
 });

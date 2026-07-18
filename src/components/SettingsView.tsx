@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BusinessSettings, StaffMember } from '../types';
-import { Settings, Save, Download, Upload, Shield, Lock, Moon, Sun, CheckCircle, HelpCircle } from 'lucide-react';
+import { Settings, Save, Download, Upload, Shield, Lock, Moon, Sun, CheckCircle, HelpCircle, Users, Mail } from 'lucide-react';
 
 interface SettingsViewProps {
   settings: BusinessSettings;
@@ -9,6 +9,7 @@ interface SettingsViewProps {
   onImportState: (jsonData: string) => void;
   onExportState: () => void;
   currentStaff: StaffMember;
+  onEnterAdminHub?: () => void;
 }
 
 export default function SettingsView({
@@ -17,7 +18,8 @@ export default function SettingsView({
   onSaveSettings,
   onImportState,
   onExportState,
-  currentStaff
+  currentStaff,
+  onEnterAdminHub
 }: SettingsViewProps) {
   const [businessName, setBusinessName] = useState<string>(settings.businessName);
   const [currency, setCurrency] = useState<string>(settings.currency);
@@ -80,6 +82,8 @@ export default function SettingsView({
   };
 
   const isOwner = currentStaff.role === 'owner';
+  const ownerStaff = staff.find(s => s.role === 'owner');
+  const ownerName = ownerStaff ? ownerStaff.name : "Shop Owner";
 
   if (currentStaff.role === 'salesperson') {
     return (
@@ -124,7 +128,7 @@ export default function SettingsView({
           <div className="p-3.5 bg-amber-50 border border-amber-100 text-amber-900 rounded-[18px] flex items-start gap-2.5 text-[11px] font-semibold leading-relaxed">
             <Lock className="w-4 h-4 text-amber-650 mt-0.5 shrink-0" />
             <div>
-              <span className="font-extrabold text-amber-950">Limited Manager Privileges:</span> Some identity, tax, and security fields are locked. Only the Shop Owner (<strong className="text-amber-950 font-bold">Alhaji Ibrahim</strong>) is authorized to modify them.
+              <span className="font-extrabold text-amber-950">Limited Manager Privileges:</span> Some identity, tax, and security fields are locked. Only the Shop Owner (<strong className="text-amber-950 font-bold">{ownerName}</strong>) is authorized to modify them.
             </div>
           </div>
         )}
@@ -136,7 +140,18 @@ export default function SettingsView({
             
             {/* Shop Name */}
             <div>
-              <label className="block text-[11px] font-bold text-gray-500 mb-1.5">Business / Shop Name</label>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-[11px] font-bold text-gray-500">Business / Shop Name</label>
+                {isOwner ? (
+                  <span className="text-[9px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                    Editable (Shop Owner)
+                  </span>
+                ) : (
+                  <span className="text-[9px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-black uppercase tracking-wider flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Locked ({ownerName} Only)
+                  </span>
+                )}
+              </div>
               <input
                 id="settings-shop-name"
                 type="text"
@@ -147,9 +162,35 @@ export default function SettingsView({
                 className={`w-full h-10 px-4 rounded-full outline-none text-xs font-semibold transition-all ${
                   !isOwner
                     ? "bg-gray-100 border border-gray-250 text-gray-400 cursor-not-allowed"
-                    : "bg-gray-50 border border-gray-100 focus:border-teal-500 text-gray-700"
+                    : "bg-gray-50 border border-gray-100 focus:border-teal-500 text-gray-700 shadow-sm"
                 }`}
+                placeholder="Enter shop name..."
               />
+            </div>
+
+            {/* Shop Code block for onboarding */}
+            <div className="bg-emerald-50 border border-emerald-100 rounded-[20px] p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-semibold">
+              <div className="space-y-0.5">
+                <span className="font-extrabold text-emerald-950 uppercase text-[11px] tracking-tight block">Shop Registration Code</span>
+                <p className="text-[10px] text-emerald-800 font-medium leading-relaxed">
+                  Give this code to your staff so they can register & join this shop in their app.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0 justify-between sm:justify-start">
+                <span className="font-black text-xs tracking-wider text-emerald-950 bg-white/80 px-3 py-1.5 rounded-xl border border-emerald-200">
+                  {settings.shopCode || "SL-8921"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(settings.shopCode || "SL-8921");
+                    alert("Shop Code copied to clipboard!");
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                >
+                  Copy Code
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -306,6 +347,86 @@ export default function SettingsView({
           </button>
         </form>
 
+        {/* Registered Personnel Directory Section */}
+        {isOwner ? (
+          <div className="pt-6 border-t border-gray-100 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-teal-600" />
+                Registered Personnel ({staff.length})
+              </h3>
+              <span className="text-[9px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-teal-100">
+                Active Shop List
+              </span>
+            </div>
+
+            <p className="text-[11px] text-gray-400 font-semibold leading-relaxed">
+              Review your team profiles and security pins. Give new employees your <strong>Shop Registration Code ({settings.shopCode || "SL-8921"})</strong> to sign up themselves.
+            </p>
+
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {staff.map((s) => {
+                const fallbackPin = s.role === 'owner' ? '1111' : s.role === 'manager' ? '2222' : '3333';
+                const currentPin = s.pin || fallbackPin;
+                return (
+                  <div key={s.id} className="p-3.5 bg-gray-50 border border-gray-100 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-teal-900 text-teal-100 flex items-center justify-center font-black text-xs uppercase shrink-0">
+                        {s.name.slice(0, 1)}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-xs text-gray-900">{s.name}</span>
+                          <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full tracking-wider border ${
+                            s.role === 'owner' 
+                              ? 'bg-purple-50 text-purple-700 border-purple-100' 
+                              : s.role === 'manager'
+                              ? 'bg-blue-50 text-blue-700 border-blue-100'
+                              : 'bg-teal-50 text-teal-700 border-teal-100'
+                          }`}>
+                            {s.role}
+                          </span>
+                        </div>
+                        {(s.email || s.phone) ? (
+                          <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                            {s.email} {s.email && s.phone && '•'} {s.phone}
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-gray-450 font-medium mt-0.5">No contact details listed</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 justify-between sm:justify-end bg-white border border-gray-150 p-1.5 px-3 rounded-xl">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Passcode PIN:</span>
+                      <span className="font-black text-xs text-gray-700 font-mono tracking-widest">{currentPin}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="pt-6 border-t border-gray-100 space-y-3">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-gray-300" />
+                Registered Personnel
+              </h3>
+              <span className="text-[9px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-amber-100 flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" /> Restricted
+              </span>
+            </div>
+            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs font-semibold text-amber-900 leading-relaxed flex items-start gap-2.5 animate-fade-in">
+              <Lock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-extrabold text-amber-950 block mb-0.5">Access Restricted</span>
+                Personnel directory profiles, security PINs, and team registration codes can only be viewed or managed by the Shop Owner (<strong className="text-amber-950 font-bold">{ownerName}</strong>).
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 1-Click Backups & Syncs Section */}
         <div className="pt-6 border-t border-gray-100 space-y-4">
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
@@ -345,6 +466,33 @@ export default function SettingsView({
             </label>
           </div>
         </div>
+
+        {/* App Owner Hub Promo Section */}
+        {onEnterAdminHub && isOwner && (
+          <div className="pt-6 border-t border-gray-150 space-y-4">
+            <h3 className="text-xs font-bold text-teal-950 uppercase tracking-wider flex items-center gap-1.5">
+              <Mail className="w-4 h-4 text-teal-700" />
+              App Owner / Developer Portal
+            </h3>
+            <div className="bg-teal-50/50 rounded-2xl p-4.5 border border-teal-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="space-y-1">
+                <span className="text-xs font-extrabold text-teal-950 block">Platform Client Communications</span>
+                <p className="text-[11px] text-teal-850 font-semibold leading-normal max-w-md">
+                  View all registered platform users, send newsletter broadcasts, system updates, and scheduled billing invoices directly.
+                </p>
+              </div>
+              <button
+                type="button"
+                id="enter-admin-hub-settings-btn"
+                onClick={onEnterAdminHub}
+                className="px-4.5 py-2.5 bg-teal-950 hover:bg-teal-900 active:scale-95 text-white rounded-full font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shrink-0 shadow-md"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                Open App Owner Hub
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

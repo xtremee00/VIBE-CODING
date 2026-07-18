@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ShopState, Product, Sale, Expense, StaffMember, StockHistoryLog, AppNotification, BusinessSettings } from './types';
 import { INITIAL_STATE } from './data';
-import PinScreen from './components/PinScreen';
+import OnboardingGateway from './components/OnboardingGateway';
 import RecordSale from './components/RecordSale';
 import RecordExpense from './components/RecordExpense';
 import ProductsList from './components/ProductsList';
 import ReportsView from './components/ReportsView';
 import SettingsView from './components/SettingsView';
+import AppOwnerHub from './components/AppOwnerHub';
 
 import {
   Bell,
@@ -29,13 +30,14 @@ import {
   Unlock,
   CheckCircle,
   FolderMinus,
-  Briefcase
+  Briefcase,
+  Mail
 } from 'lucide-react';
 
 export default function App() {
   const [state, setState] = useState<ShopState | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'sales' | 'inventory' | 'reports' | 'settings'>('home');
-  const [showPinScreen, setShowPinScreen] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'home' | 'sales' | 'inventory' | 'reports' | 'settings' | 'admin'>('home');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   
   // Global search query
@@ -49,9 +51,6 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         setState(parsed);
-        if (parsed.settings?.pinLockEnabled) {
-          setShowPinScreen(true);
-        }
       } catch (err) {
         // Fallback to initial seed data
         const initial = INITIAL_STATE();
@@ -70,6 +69,38 @@ export default function App() {
     setState(newState);
     localStorage.setItem("ShopLedger_state", JSON.stringify(newState));
   };
+
+  // Synchronize local staff database with backend registry
+  useEffect(() => {
+    if (state && state.staff && state.staff.length > 0) {
+      const syncStaff = async () => {
+        for (const member of state.staff) {
+          try {
+            await fetch('/api/admin/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: member.id,
+                type: member.role === 'owner' ? "shop_created" : "staff_joined",
+                businessName: state.settings.businessName,
+                name: member.name,
+                email: member.email || "",
+                phone: member.phone || "",
+                role: member.role,
+                date: new Date().toISOString(),
+                shopCode: state.settings.shopCode || "SL-8921"
+              })
+            });
+          } catch (err) {
+            console.error("Failed to sync local staff with server:", err);
+          }
+        }
+      };
+      // Delay slightly to allow server setup
+      const timer = setTimeout(syncStaff, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [state?.settings.businessName, state?.staff]);
 
   // Global search matches
   const globalSearchResults = useMemo(() => {
@@ -365,6 +396,109 @@ export default function App() {
     });
   };
 
+  // Handle Onboarding/Login Actions
+  const handleLoginSuccess = (staffId: string) => {
+    setIsAuthenticated(true);
+    if (state) {
+      saveState({
+        ...state,
+        currentStaffId: staffId
+      });
+    }
+  };
+
+  const handleRegisterStaff = async (newStaff: StaffMember) => {
+    if (state) {
+      const updatedStaff = [...state.staff, newStaff];
+      saveState({
+        ...state,
+        staff: updatedStaff
+      });
+
+      try {
+        await fetch('/api/admin/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: newStaff.id,
+            type: "staff_joined",
+            businessName: state.settings.businessName,
+            name: newStaff.name,
+            email: newStaff.email || "",
+            phone: newStaff.phone || "",
+            role: newStaff.role,
+            date: new Date().toISOString(),
+            shopCode: state.settings.shopCode || "SL-8921"
+          })
+        });
+      } catch (err) {
+        console.error("Failed to sync registered staff to server:", err);
+      }
+    }
+  };
+
+  const handleRegisterNewShop = async (businessName: string, ownerName: string, pin: string, keepSamples: boolean) => {
+    if (state) {
+      const shopCode = `SL-${Math.floor(1000 + Math.random() * 9000)}`;
+      const newOwner: StaffMember = {
+        id: "s1",
+        name: ownerName,
+        role: "owner",
+        isActive: true,
+        pin: pin
+      };
+
+      const updatedSettings: BusinessSettings = {
+        ...state.settings,
+        businessName,
+        shopCode
+      };
+
+      const newState: ShopState = {
+        ...state,
+        currentStaffId: "s1",
+        staff: [newOwner],
+        settings: updatedSettings,
+        products: keepSamples ? state.products : [],
+        sales: keepSamples ? state.sales : [],
+        expenses: keepSamples ? state.expenses : [],
+        stockHistory: keepSamples ? state.stockHistory : [],
+        notifications: [
+          {
+            id: "notif-welcome",
+            title: `Welcome to ${businessName}! 🎉`,
+            message: `Your business registry is setup. Share your Shop Code (${shopCode}) with your workers so they can sign up!`,
+            date: new Date().toISOString(),
+            read: false,
+            type: "monthly_report"
+          }
+        ]
+      };
+
+      saveState(newState);
+
+      try {
+        await fetch('/api/admin/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: "s1",
+            type: "shop_created",
+            businessName: businessName,
+            name: ownerName,
+            email: "",
+            phone: "",
+            role: "owner",
+            date: new Date().toISOString(),
+            shopCode: shopCode
+          })
+        });
+      } catch (err) {
+        console.error("Failed to sync new shop registration to server:", err);
+      }
+    }
+  };
+
   // Quick numbers for dashboard home
   const today = new Date().toISOString().split('T')[0];
   const todaySales = sales.filter(s => s.date === today).reduce((sum, s) => sum + s.totalAmount, 0);
@@ -386,12 +520,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F7F9F8] flex flex-col justify-between font-sans pb-24">
-      {/* PIN Lock overlay */}
-      {showPinScreen && (
-        <PinScreen
-          correctPin={settings.pinCode || "1234"}
-          businessName={settings.businessName}
-          onUnlock={() => setShowPinScreen(false)}
+      {/* Onboarding / Sign In Security Gate */}
+      {!isAuthenticated && (
+        <OnboardingGateway
+          state={state}
+          onLoginSuccess={handleLoginSuccess}
+          onRegisterStaff={handleRegisterStaff}
+          onRegisterNewShop={handleRegisterNewShop}
         />
       )}
 
@@ -399,17 +534,20 @@ export default function App() {
       <header className="sticky top-0 bg-white border-b border-gray-100 z-30 px-6 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
-          {/* Shop Name & Logo initial banner */}
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-teal-600 flex items-center justify-center text-white font-bold text-xl shadow-sm">
-              {settings.businessName.slice(0, 1).toUpperCase()}
+          {/* Shop Name & Logo initial banner with ShopLedger brand */}
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-teal-950 text-emerald-400 flex items-center justify-center font-black text-base shadow-inner border border-teal-850 shrink-0">
+              SL
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900 tracking-tight leading-tight">
-                {settings.businessName}
-              </h1>
-              <p className="text-xs text-gray-500 flex items-center gap-2 mt-0.5 font-medium">
-                <span>{activeStaffMember.name} • {activeStaffMember.role === 'owner' ? 'Shop Owner' : activeStaffMember.role === 'admin' ? 'Manager' : 'Salesperson'}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-black tracking-tight text-teal-950">ShopLedger</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100/50">
+                  {settings.businessName}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 flex items-center gap-2 mt-1 font-semibold leading-none">
+                <span>{activeStaffMember.name} • <span className="text-teal-700 font-black uppercase tracking-wider text-[9px]">{activeStaffMember.role}</span></span>
                 {settings.pinLockEnabled && (
                   <span className="text-[9px] bg-teal-50 text-teal-700 font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 uppercase tracking-wider border border-teal-100">
                     <Lock className="w-2.5 h-2.5" /> PIN Locked
@@ -520,10 +658,10 @@ export default function App() {
             )}
           </div>
 
-          {/* Right navbar links: staff changer, bell, notifications popup */}
-          <div className="flex items-center gap-3">
+          {/* Right navbar links: staff changer, lock, bell, notifications popup */}
+          <div className="flex items-center gap-2.5 sm:gap-3">
             {/* Staff Changer Dropdown */}
-            <div className="flex items-center gap-1.5 bg-gray-50 px-3.5 py-2 rounded-full border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full border border-gray-100 shadow-sm">
               <span className="text-[10px] font-bold text-gray-400 mr-0.5 hidden sm:inline">Personnel:</span>
               <select
                 id="staff-changer-dropdown"
@@ -533,14 +671,45 @@ export default function App() {
                     ...state,
                     currentStaffId: e.target.value
                   });
+                  setIsAuthenticated(false);
                 }}
-                className="bg-transparent font-bold text-xs text-gray-800 outline-none cursor-pointer"
+                className="bg-transparent font-bold text-xs text-gray-800 outline-none cursor-pointer max-w-[120px] sm:max-w-none overflow-hidden text-ellipsis"
               >
                 {staff.map(s => (
                   <option key={s.id} value={s.id}>{s.name} ({s.role.toUpperCase()})</option>
                 ))}
               </select>
             </div>
+
+            {/* App Owner Hub Entry Button (only visible to role === 'owner') */}
+            {activeStaffMember.role === 'owner' && (
+              <button
+                id="admin-hub-header-btn"
+                onClick={() => {
+                  setActiveTab(activeTab === 'admin' ? 'home' : 'admin');
+                }}
+                title="App Owner Hub"
+                className={`w-9 h-9 sm:w-10 sm:h-10 border rounded-full flex items-center justify-center cursor-pointer active:scale-95 transition-all shrink-0 ${
+                  activeTab === 'admin' 
+                    ? 'bg-teal-950 text-emerald-400 border-teal-850' 
+                    : 'bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 border-emerald-100'
+                }`}
+              >
+                <Mail className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Lock / Sign Out Button */}
+            <button
+              id="lock-screen-btn"
+              onClick={() => {
+                setIsAuthenticated(false);
+              }}
+              title="Lock Screen"
+              className="w-9 h-9 sm:w-10 sm:h-10 bg-teal-50 hover:bg-teal-100/80 text-teal-700 border border-teal-100 rounded-full flex items-center justify-center cursor-pointer active:scale-95 transition-all shrink-0"
+            >
+              <Lock className="w-4 h-4" />
+            </button>
 
             {/* Notifications Bell */}
             <div className="relative">
@@ -876,7 +1045,12 @@ export default function App() {
             onExportState={handleExportState}
             onImportState={handleImportState}
             currentStaff={activeStaffMember}
+            onEnterAdminHub={() => setActiveTab('admin')}
           />
+        )}
+
+        {activeTab === 'admin' && (
+          <AppOwnerHub />
         )}
       </main>
 

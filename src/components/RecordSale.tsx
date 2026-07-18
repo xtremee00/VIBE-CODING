@@ -95,6 +95,41 @@ export default function RecordSale({
     });
   };
 
+  const handleQuantityInputChange = (productId: string, valStr: string) => {
+    if (valStr === '') {
+      setCart((prev) =>
+        prev.map((item) =>
+          item.product.id === productId ? { ...item, quantity: 0 } : item
+        )
+      );
+      return;
+    }
+
+    const cleaned = valStr.replace(/\D/g, '');
+    if (cleaned === '') {
+      setCart((prev) =>
+        prev.map((item) =>
+          item.product.id === productId ? { ...item, quantity: 0 } : item
+        )
+      );
+      return;
+    }
+
+    const val = parseInt(cleaned, 10);
+    setCart((prev) => {
+      return prev.map((item) => {
+        if (item.product.id === productId) {
+          if (val > item.product.currentQuantity) {
+            alert(`Cannot exceed available stock of ${item.product.currentQuantity} units.`);
+            return { ...item, quantity: item.product.currentQuantity };
+          }
+          return { ...item, quantity: val };
+        }
+        return item;
+      });
+    });
+  };
+
   const removeFromCart = (productId: string) => {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   };
@@ -105,14 +140,18 @@ export default function RecordSale({
   const total = subtotal + taxAmount;
 
   const handleCheckout = () => {
-    if (cart.length === 0) return;
+    const activeCart = cart.filter(item => item.quantity > 0);
+    if (activeCart.length === 0) {
+      alert("No items with valid quantities are in your cart!");
+      return;
+    }
 
     const receiptNo = `SL-${Math.floor(100000 + Math.random() * 900000)}`;
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].slice(0, 5);
 
-    const saleItems: SaleItem[] = cart.map((item) => ({
+    const saleItems: SaleItem[] = activeCart.map((item) => ({
       productId: item.product.id,
       productName: item.product.name,
       quantity: item.quantity,
@@ -364,7 +403,7 @@ export default function RecordSale({
                     </div>
 
                     {/* Quantity Selector buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
                       <button
                         id={`cart-qty-minus-${item.product.id}`}
                         onClick={() => updateQuantity(item.product.id, -1)}
@@ -372,7 +411,18 @@ export default function RecordSale({
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="text-xs font-black text-gray-700 w-4 text-center">{item.quantity}</span>
+                      <input
+                        id={`cart-qty-input-${item.product.id}`}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={item.quantity === 0 ? '' : item.quantity}
+                        onChange={(e) => handleQuantityInputChange(item.product.id, e.target.value)}
+                        onBlur={() => {
+                          setCart((prev) => prev.filter((item) => item.quantity > 0));
+                        }}
+                        className="w-10 sm:w-12 h-7 bg-white border border-gray-150 rounded-xl text-center text-xs font-black text-gray-800 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                      />
                       <button
                         id={`cart-qty-plus-${item.product.id}`}
                         onClick={() => updateQuantity(item.product.id, 1)}
