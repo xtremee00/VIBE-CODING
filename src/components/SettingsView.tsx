@@ -1,0 +1,351 @@
+import React, { useState } from 'react';
+import { BusinessSettings, StaffMember } from '../types';
+import { Settings, Save, Download, Upload, Shield, Lock, Moon, Sun, CheckCircle, HelpCircle } from 'lucide-react';
+
+interface SettingsViewProps {
+  settings: BusinessSettings;
+  staff: StaffMember[];
+  onSaveSettings: (settings: BusinessSettings) => void;
+  onImportState: (jsonData: string) => void;
+  onExportState: () => void;
+  currentStaff: StaffMember;
+}
+
+export default function SettingsView({
+  settings,
+  staff,
+  onSaveSettings,
+  onImportState,
+  onExportState,
+  currentStaff
+}: SettingsViewProps) {
+  const [businessName, setBusinessName] = useState<string>(settings.businessName);
+  const [currency, setCurrency] = useState<string>(settings.currency);
+  const [taxEnabled, setTaxEnabled] = useState<boolean>(settings.taxEnabled);
+  const [taxRate, setTaxRate] = useState<string>(settings.taxRate.toString());
+  const [receiptFooter, setReceiptFooter] = useState<string>(settings.receiptFooter);
+  const [pinLockEnabled, setPinLockEnabled] = useState<boolean>(settings.pinLockEnabled);
+  const [pinCode, setPinCode] = useState<string>(settings.pinCode || "");
+  const [language, setLanguage] = useState<string>(settings.language);
+
+  const [successMsg, setSuccessMsg] = useState<string>("");
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinLockEnabled && pinCode.length !== 4) {
+      alert("PIN code must be exactly 4 digits long.");
+      return;
+    }
+
+    onSaveSettings({
+      businessName,
+      currency,
+      taxEnabled,
+      taxRate: parseFloat(taxRate) || 0,
+      receiptFooter,
+      darkMode: settings.darkMode,
+      language,
+      backupSettings: settings.backupSettings,
+      pinLockEnabled,
+      pinCode: pinLockEnabled ? pinCode : undefined
+    });
+
+    setSuccessMsg("Settings updated successfully!");
+    setTimeout(() => {
+      setSuccessMsg("");
+    }, 2000);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = event.target?.result as string;
+        // Basic validation
+        const parsed = JSON.parse(json);
+        if (parsed.products && parsed.sales && parsed.settings) {
+          onImportState(json);
+          alert("Backup restored successfully! App will reload current logs.");
+        } else {
+          alert("Invalid backup file. Missing critical ledger structures.");
+        }
+      } catch (err) {
+        alert("Failed to parse file. Ensure it is a valid ShopLedger JSON backup.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const isOwner = currentStaff.role === 'owner';
+
+  if (currentStaff.role === 'salesperson') {
+    return (
+      <div className="animate-fade-in max-w-md mx-auto p-8 bg-white rounded-[32px] border border-gray-100 shadow-sm text-center space-y-4">
+        <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+          <Lock className="w-7 h-7" />
+        </div>
+        <div className="space-y-1.5">
+          <h3 className="text-base font-extrabold text-gray-900">Access Restricted</h3>
+          <p className="text-xs text-gray-500 font-medium leading-relaxed">
+            Your personnel profile is set to <strong>Salesperson</strong>. Only Managers or the Shop Owner can view or modify business settings.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-fade-in max-w-2xl mx-auto pb-24">
+      <div className="bg-white rounded-[24px] p-6 border border-gray-100 shadow-sm space-y-6">
+        <div className="flex justify-between items-center border-b border-gray-50 pb-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Settings className="w-5 h-5 text-gray-600" />
+              Settings & Customization
+            </h2>
+            <p className="text-xs text-gray-500 font-semibold mt-0.5">Configure business details, receipts, tax, and local security pins.</p>
+          </div>
+          <div className="bg-gray-100 text-gray-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase">
+            {isOwner ? "Owner Mode" : "Manager Mode"}
+          </div>
+        </div>
+
+        {successMsg && (
+          <div className="p-4 bg-teal-50 text-teal-850 rounded-[16px] flex items-center gap-2 border border-teal-100/50 text-xs font-semibold">
+            <CheckCircle className="w-4 h-4 text-teal-600" />
+            {successMsg}
+          </div>
+        )}
+
+        {!isOwner && (
+          <div className="p-3.5 bg-amber-50 border border-amber-100 text-amber-900 rounded-[18px] flex items-start gap-2.5 text-[11px] font-semibold leading-relaxed">
+            <Lock className="w-4 h-4 text-amber-650 mt-0.5 shrink-0" />
+            <div>
+              <span className="font-extrabold text-amber-950">Limited Manager Privileges:</span> Some identity, tax, and security fields are locked. Only the Shop Owner (<strong className="text-amber-950 font-bold">Alhaji Ibrahim</strong>) is authorized to modify them.
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSave} className="space-y-5">
+          {/* Business Profile Section */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Business Profile</h3>
+            
+            {/* Shop Name */}
+            <div>
+              <label className="block text-[11px] font-bold text-gray-500 mb-1.5">Business / Shop Name</label>
+              <input
+                id="settings-shop-name"
+                type="text"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                required
+                disabled={!isOwner}
+                className={`w-full h-10 px-4 rounded-full outline-none text-xs font-semibold transition-all ${
+                  !isOwner
+                    ? "bg-gray-100 border border-gray-250 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-50 border border-gray-100 focus:border-teal-500 text-gray-700"
+                }`}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Currency Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 mb-1.5">Currency Symbol</label>
+                <select
+                  id="settings-currency"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  disabled={!isOwner}
+                  className={`w-full h-10 px-4 rounded-full outline-none text-xs font-semibold transition-all cursor-pointer ${
+                    !isOwner
+                      ? "bg-gray-100 border border-gray-250 text-gray-400 cursor-not-allowed"
+                      : "bg-gray-50 border border-gray-100 focus:border-teal-500 text-gray-700"
+                  }`}
+                >
+                  <option value="₦">₦ (NGN)</option>
+                  <option value="$">$ (USD)</option>
+                  <option value="€">€ (EUR)</option>
+                  <option value="£">£ (GBP)</option>
+                  <option value="GH₵">GH₵ (GHS)</option>
+                  <option value="KSh">KSh (KES)</option>
+                  <option value="₹">₹ (INR)</option>
+                  <option value="CFA">CFA (XOF)</option>
+                </select>
+              </div>
+
+              {/* Language Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 mb-1.5">Language</label>
+                <select
+                  id="settings-language"
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="w-full h-10 px-4 bg-gray-50 border border-gray-100 rounded-full outline-none focus:border-teal-500 text-xs font-semibold text-gray-700 cursor-pointer"
+                >
+                  <option value="English">English</option>
+                  <option value="Yoruba">Yoruba</option>
+                  <option value="Hausa">Hausa</option>
+                  <option value="Igbo">Igbo</option>
+                  <option value="Pidgin">Nigerian Pidgin</option>
+                  <option value="French">French</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Tax Configurations */}
+          <div className="space-y-4 pt-4 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+              <span>Tax Configuration (VAT)</span>
+              <button
+                id="toggle-tax-btn"
+                type="button"
+                onClick={() => isOwner && setTaxEnabled(!taxEnabled)}
+                disabled={!isOwner}
+                className={`w-10 h-5 rounded-full p-0.5 transition-all duration-200 ${
+                  !isOwner ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                } ${
+                  taxEnabled ? "bg-teal-600 flex justify-end" : "bg-gray-200 flex justify-start"
+                }`}
+              >
+                <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
+              </button>
+            </h3>
+
+            {taxEnabled && (
+              <div className="animate-fade-in">
+                <label className="block text-[11px] font-bold text-gray-500 mb-1.5">VAT Rate (%)</label>
+                <input
+                  id="settings-tax-rate"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="e.g. 7.5"
+                  value={taxRate}
+                  onChange={(e) => setTaxRate(e.target.value)}
+                  disabled={!isOwner}
+                  className={`w-24 h-10 px-4 rounded-full outline-none text-xs font-semibold transition-all ${
+                    !isOwner
+                      ? "bg-gray-100 border border-gray-250 text-gray-400 cursor-not-allowed"
+                      : "bg-gray-50 border border-gray-100 focus:border-teal-500 text-gray-700"
+                  }`}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Receipt Customizations */}
+          <div className="space-y-4 pt-4 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Receipt Footer</h3>
+            <div>
+              <label className="block text-[11px] font-bold text-gray-500 mb-1.5">Custom Receipt Bottom Note</label>
+              <textarea
+                id="settings-receipt-footer"
+                rows={2}
+                value={receiptFooter}
+                onChange={(e) => setReceiptFooter(e.target.value)}
+                placeholder="e.g. No cash refund on goods after 24 hours. Thanks!"
+                className="w-full p-4 bg-gray-50 border border-gray-100 rounded-[16px] outline-none focus:border-teal-500 text-xs font-semibold text-gray-700"
+              />
+            </div>
+          </div>
+
+          {/* Local PIN Lock Screen Demonstration */}
+          <div className="space-y-4 pt-4 border-t border-gray-100">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1"><Lock className="w-4 h-4" /> PIN Security Lock</span>
+              <button
+                id="toggle-pin-btn"
+                type="button"
+                onClick={() => isOwner && setPinLockEnabled(!pinLockEnabled)}
+                disabled={!isOwner}
+                className={`w-10 h-5 rounded-full p-0.5 transition-all duration-200 ${
+                  !isOwner ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                } ${
+                  pinLockEnabled ? "bg-teal-600 flex justify-end" : "bg-gray-200 flex justify-start"
+                }`}
+              >
+                <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
+              </button>
+            </h3>
+
+            {pinLockEnabled && (
+              <div className="animate-fade-in">
+                <label className="block text-[11px] font-bold text-gray-500 mb-1.5">Enter 4-Digit Security PIN</label>
+                <input
+                  id="settings-pin-code"
+                  type="password"
+                  maxLength={4}
+                  pattern="[0-9]{4}"
+                  placeholder="e.g. 1234"
+                  value={pinCode}
+                  onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ""))}
+                  disabled={!isOwner}
+                  className={`w-24 h-10 tracking-widest rounded-full outline-none text-sm font-black text-center transition-all ${
+                    !isOwner
+                      ? "bg-gray-100 border border-gray-250 text-gray-400 cursor-not-allowed"
+                      : "bg-gray-50 border border-gray-100 focus:border-teal-500 text-gray-700"
+                  }`}
+                />
+              </div>
+            )}
+          </div>
+
+          <button
+            id="save-settings-btn"
+            type="submit"
+            className="w-full h-11 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-full font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-teal-600/10 border-0"
+          >
+            <Save className="w-4 h-4" />
+            Save Ledger Settings
+          </button>
+        </form>
+
+        {/* 1-Click Backups & Syncs Section */}
+        <div className="pt-6 border-t border-gray-100 space-y-4">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+            <Shield className="w-4 h-4 text-teal-600" />
+            Local Data Backups & Sync (Offline Mode)
+          </h3>
+          <p className="text-[11px] text-gray-400 font-semibold leading-relaxed">
+            ShopLedger operates entirely client-side for ultra-fast performance. Download a physical backup file to guarantee no historical record is ever lost, or upload a backup JSON from another device.
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              id="backup-export-btn"
+              onClick={onExportState}
+              className="h-10 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-100/50 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Download className="w-4 h-4" />
+              Download Backup
+            </button>
+            
+            <label className={`h-10 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 transition-all border ${
+              !isOwner
+                ? "bg-gray-100 text-gray-450 border-gray-200 cursor-not-allowed opacity-65"
+                : "bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-100/50 cursor-pointer"
+            }`}>
+              <Upload className="w-4 h-4" />
+              Restore Backup
+              {isOwner && (
+                <input
+                  id="backup-upload-input"
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              )}
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
